@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#101827">
+<title>DualSound — Bluetooth Manager</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#141f31;--panel2:#1b2a40;--line:#2b3c55;--text:#f4f7fb;--muted:#9aacc2;--cyan:#39c6e8;--green:#43d6a0;--red:#ff7886}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at top,#172b43 0,#0b1220 55%);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;min-height:100vh}
+.wrap{max-width:760px;margin:auto;padding:22px 16px 42px}
+header{display:flex;align-items:center;gap:12px;margin:8px 0 22px}
+.logo{width:48px;height:48px;border-radius:15px;background:linear-gradient(135deg,#39c6e8,#4775ff);display:grid;place-items:center;font-size:25px;box-shadow:0 8px 30px #247db855}
+h1{font-size:23px;margin:0;letter-spacing:.2px}
+.sub{font-size:13px;color:var(--muted);margin-top:3px}
+.pill{margin-left:auto;border:1px solid #2d5363;color:#8ee9f6;background:#153447;padding:7px 10px;border-radius:30px;font-size:11px;white-space:nowrap}
+.hero,.panel,.device{background:linear-gradient(145deg,#17263a,#111c2d);border:1px solid var(--line);border-radius:19px;box-shadow:0 12px 35px #0002}
+.hero{padding:20px;margin-bottom:16px}
+.hero h2{font-size:19px;margin:0 0 7px}
+.hero p{font-size:13px;line-height:1.55;color:var(--muted);margin:0 0 17px}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+button{border:0;border-radius:12px;padding:13px 16px;font-size:14px;font-weight:700;cursor:pointer}
+.primary{background:linear-gradient(100deg,#31c5e8,#4d83ff);color:#061321;flex:1}
+.secondary{background:#24364e;color:#e8f3ff;border:1px solid #3a506c}
+button:disabled{opacity:.5;cursor:not-allowed}
+.status{font-size:12px;color:var(--muted);margin-top:13px;min-height:18px}
+.section-head{display:flex;justify-content:space-between;align-items:center;margin:22px 2px 12px}
+.section-head h3{font-size:15px;margin:0}
+.count{font-size:12px;color:var(--muted)}
+.devices{display:grid;grid-template-columns:1fr;gap:10px}
+.device{padding:15px;display:flex;align-items:center;gap:13px}
+.device-icon{width:43px;height:43px;flex:0 0 43px;border-radius:13px;background:#203b54;display:grid;place-items:center;font-size:21px}
+.device-info{min-width:0;flex:1}
+.device-name{font-size:14px;font-weight:700;overflow-wrap:anywhere}
+.device-meta{font-size:11px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
+.tag{font-size:10px;padding:6px 8px;border-radius:20px;color:#a6f0d1;background:#153c36;border:1px solid #28634f;white-space:nowrap}
+.empty{padding:25px 16px;text-align:center;border:1px dashed #3a4b63;border-radius:16px;color:var(--muted);font-size:13px;line-height:1.6}
+.note{margin-top:18px;padding:14px;border-radius:14px;background:#172b3c;border:1px solid #2b4d61;color:#b7c9dc;font-size:12px;line-height:1.6}
+.note b{color:#e8f5ff}
+footer{text-align:center;color:#71849c;font-size:11px;margin-top:25px}
+@media(min-width:600px){.devices{grid-template-columns:1fr 1fr}.hero{padding:24px}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <div class="logo">♫</div>
+    <div><h1>DualSound</h1><div class="sub">Bluetooth device manager</div></div>
+    <div class="pill">WEB EDITION</div>
+  </header>
+
+  <section class="hero">
+    <h2>Find Bluetooth devices</h2>
+    <p>Tap scan and choose a nearby device from your browser's Bluetooth picker. Each selected device appears in its own card.</p>
+    <div class="actions">
+      <button class="primary" id="scanBtn">⌕ &nbsp; SCAN / ADD DEVICE</button>
+      <button class="secondary" id="clearBtn">Clear list</button>
+    </div>
+    <div class="status" id="status" role="status">Ready. Open this page in a supported browser over HTTPS.</div>
+  </section>
+
+  <div class="section-head">
+    <h3>My devices</h3>
+    <span class="count" id="count">0 devices</span>
+  </div>
+  <section class="devices" id="devices">
+    <div class="empty" id="empty">No devices added yet.<br>Press <b>SCAN / ADD DEVICE</b> to open the Bluetooth picker.</div>
+  </section>
+
+  <aside class="note">
+    <b>Important:</b> This single-file website uses the browser's Web Bluetooth device picker. It cannot continuously scan every Bluetooth device, show all paired devices, or connect two speakers for simultaneous audio. For broad Bluetooth scanning and system-level audio routing, a native Android app and phone support are required. Bluetooth access also requires HTTPS and browser/device support.
+  </aside>
+  <footer>DualSound • Single-file edition</footer>
+</main>
+<script>
+(() => {
+  const scanBtn = document.getElementById('scanBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const status = document.getElementById('status');
+  const devices = document.getElementById('devices');
+  const count = document.getElementById('count');
+  const empty = document.getElementById('empty');
+  const known = new Map();
+
+  function updateCount() {
+    count.textContent = `${known.size} device${known.size === 1 ? '' : 's'}`;
+    empty.hidden = known.size > 0;
+  }
+
+  function addDevice(device) {
+    const id = device.id || device.name || `device-${known.size + 1}`;
+    if (known.has(id)) {
+      status.textContent = `${device.name || 'Device'} is already in your list.`;
+      return;
+    }
+    known.set(id, device);
+
+    const card = document.createElement('article');
+    card.className = 'device';
+
+    const icon = document.createElement('div');
+    icon.className = 'device-icon';
+    icon.textContent = '🔊';
+
+    const info = document.createElement('div');
+    info.className = 'device-info';
+
+    const name = document.createElement('div');
+    name.className = 'device-name';
+    name.textContent = device.name || 'Unnamed Bluetooth device';
+
+    const meta = document.createElement('div');
+    meta.className = 'device-meta';
+    meta.textContent = 'Selected in browser • ' + id;
+
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = 'Added';
+
+    info.append(name, meta);
+    card.append(icon, info, tag);
+    devices.appendChild(card);
+    updateCount();
+    status.textContent = 'Device added. You can scan and add another device.';
+    device.addEventListener?.('gattserverdisconnected', () => {
+      tag.textContent = 'Disconnected';
+      tag.style.color = '#ffd0d4';
+      tag.style.background = '#48242d';
+      tag.style.borderColor = '#75404a';
+    });
+  }
+
+  scanBtn.addEventListener('click', async () => {
+    if (!('bluetooth' in navigator) || !navigator.bluetooth?.requestDevice) {
+      status.textContent = 'Web Bluetooth is not available in this browser. Try Chrome on Android over HTTPS.';
+      return;
+    }
+    scanBtn.disabled = true;
+    status.textContent = 'Opening Bluetooth picker…';
+    try {
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: []
+      });
+      addDevice(device);
+    } catch (error) {
+      if (error?.name === 'NotFoundError') status.textContent = 'No device selected.';
+      else if (error?.name === 'SecurityError') status.textContent = 'Bluetooth permission was blocked. Allow it in browser settings.';
+      else status.textContent = 'Could not select device: ' + (error?.message || 'Please try again.');
+    } finally {
+      scanBtn.disabled = false;
+    }
+  });
+
+  clearBtn.addEventListener('click', () => {
+    known.clear();
+    devices.querySelectorAll('.device').forEach(card => card.remove());
+    updateCount();
+    status.textContent = 'Device list cleared.';
+  });
+
+  updateCount();
+})();
+</script>
+</body>
+</html>
